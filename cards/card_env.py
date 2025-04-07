@@ -21,20 +21,37 @@ class Action:
     PLAY_10 = 11
     PLAY_11 = 12
     PLAY_12 = 13
+    PLAY_13 = 14
+    PLAY_14 = 15
+    PLAY_15 = 16
+    PLAY_16 = 17
+    PLAY_17 = 18
+    PLAY_18 = 19
+    PLAY_19 = 20
+    PLAY_20 = 21
 
 class Card:
     suits = ["hearts", "diamonds", "clubs", "spades"]
+    pretty_suit = {
+        "hearts": "♥",
+        "diamonds": "♦",
+        "clubs": "♣",
+        "spades": "♠"
+    }
     ranks = ["6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 
     rank_to_int = {rank: i for i, rank in enumerate(ranks)}
     suit_to_int = {suit: i for i, suit in enumerate(suits)}
-    NULL_CARD = -1
+    NULL_CARD = 0
     def __init__(self, rank: str, suit: str):
         self.rank = rank
         self.suit = suit
 
     def __repr__(self):
-        return f"Card(rank={self.rank}, suit={self.suit})"
+        return f"{self.rank}{self.pretty_suit[self.suit]}"
+
+    def __str__(self):
+        return self.__repr__()
 
     def __eq__(self, other):
         return self.rank == other.rank and self.suit == other.suit
@@ -43,7 +60,7 @@ class Card:
         return hash((self.rank, self.suit))
     
     def to_int(self):
-        return Card.rank_to_int[self.rank] * len(Card.suits) + Card.suit_to_int[self.suit]
+        return Card.rank_to_int[self.rank] * len(Card.suits) + Card.suit_to_int[self.suit] + 1  # +1 to avoid NULL_CARD being 0
 
 class Player:
     def __init__(self, name: str):
@@ -64,8 +81,6 @@ class Player:
     
     def add_cards(self, cards: list):
         self.hand.extend(cards)
-        if len(self.hand) > 12:
-            print(f"Hand exceeds maximum size of 12 cards: {self.hand}", file=sys.stderr)
 
 class GamePhase:
     ATTACK = "Attack"
@@ -92,11 +107,20 @@ class CardDurakEnv(gym.Env):
             11: Action.PLAY_10,  # play 10th card
             12: Action.PLAY_11,  # play 11th card
             13: Action.PLAY_12,  # play 12th card
+            14: Action.PLAY_13,  # play 13th card
+            15: Action.PLAY_14,  # play 14th card
+            16: Action.PLAY_15,  # play 15th card
+            17: Action.PLAY_16,  # play 16th card
+            18: Action.PLAY_17,  # play 17th card
+            19: Action.PLAY_18,  # play 18th card
+            20: Action.PLAY_19,  # play 19th card
+            21: Action.PLAY_20  # play 20th card
         }
-        self.action_space = gym.spaces.Discrete(14)
+        self.MAX_PLAYABLE_CARD = len(self._action_idx_to_action) - self.play_action_offset
+        self.action_space = gym.spaces.Discrete(len(self._action_idx_to_action))
         
         self.observation_space = gym.spaces.Dict({
-            "hand": gym.spaces.Box(low=Card.NULL_CARD, high=12, shape=(12,), dtype=np.int32),  # List of card integers
+            "hand": gym.spaces.Box(low=Card.NULL_CARD, high=self.MAX_PLAYABLE_CARD, shape=(self.MAX_PLAYABLE_CARD,), dtype=np.int32),  # List of card integers
             "deck_size": gym.spaces.Discrete(num_cards + 1),  # Integer
             "table": gym.spaces.Box(low=Card.NULL_CARD, high=num_cards-1, shape=(6, 2), dtype=np.int32),  # Nested list structure
             "discard": gym.spaces.Box(low=Card.NULL_CARD, high=num_cards-1, shape=(num_cards,), dtype=np.int32),  # List of card integers
@@ -114,7 +138,7 @@ class CardDurakEnv(gym.Env):
             2: self.player_2
         }
         self.table = []
-        self.discard = []
+        self.discarded = []
         self.player_1.add_cards(self.get_from_deck(6))
         self.player_2.add_cards(self.get_from_deck(6))
         self.attacking_player = self.player_1
@@ -127,10 +151,12 @@ class CardDurakEnv(gym.Env):
     def _get_obs(self, player_id: int = 1):
         player = self.id_to_player[player_id]
         
-        # Transform hand to list of integers, padded to length 12
+        # Transform hand to list of integers, padded to length self.MAX_PLAYABLE_CARD
         hand_transformed = self._transform_card_list(player.hand)
-        hand_padded = hand_transformed + [Card.NULL_CARD] * (12 - len(hand_transformed))
-        
+        hand_padded = hand_transformed + [Card.NULL_CARD] * (self.MAX_PLAYABLE_CARD - len(hand_transformed))
+        hand_padded = hand_padded[:self.MAX_PLAYABLE_CARD]  # Truncate if longer than self.MAX_PLAYABLE_CARD TODO check for info loss
+
+
         table_transformed = self._transform_table(self.table)
         table_padded = []
         for i in range(6):
@@ -142,7 +168,7 @@ class CardDurakEnv(gym.Env):
             table_padded.append(row)
         
         # Transform discard to list of integers, padded to max_cards
-        discard_transformed = self._transform_card_list(self.discard)
+        discard_transformed = self._transform_card_list(self.discarded)
         discard_padded = discard_transformed + [Card.NULL_CARD] * (self.num_cards - len(discard_transformed))
         discard_padded = discard_padded[:self.num_cards]  # Truncate if longer
         
@@ -174,25 +200,25 @@ class CardDurakEnv(gym.Env):
         return valid_actions
 
     def _get_valid_play_actions(self, hand: list[Card], is_attacking: bool):
+        limited_hand = hand[:self.MAX_PLAYABLE_CARD]
         if is_attacking:
             if not self.can_throw_in():
                 return []
             if len(self.table) == 0:
-                return [i + self.play_action_offset for i in range(len(hand))]
+                return [i + self.play_action_offset for i in range(len(limited_hand))]
             valid = set()
             for table_card_tuple in self.table:
                 for card in table_card_tuple:
-                    for i,hand_card in enumerate(hand):
+                    for i, hand_card in enumerate(limited_hand):
                         if hand_card.rank == card.rank:
                             valid.add(i + self.play_action_offset)
         else:
             card_to_beat = self.table[-1][0]
             valid = set()
-            for card in hand:
+            for i, card in enumerate(limited_hand):
                 if ((card.suit == card_to_beat.suit and Card.rank_to_int[card.rank] > Card.rank_to_int[card_to_beat.rank]) or 
                     (card.suit == self.trump.suit and card_to_beat.suit != self.trump.suit)):
-                    valid.add(hand.index(card) + self.play_action_offset)
-
+                    valid.add(i + self.play_action_offset)
         return list(valid)
 
     def _get_defending_player(self):
@@ -214,14 +240,50 @@ class CardDurakEnv(gym.Env):
             is_finished = self.is_finished()
         elif action >= self.play_action_offset:
             self.play_card(player_id, action - self.play_action_offset)
+            is_finished = False
 
         if is_finished != False:
             return self._get_obs(player_id), 1 if is_finished == player_id else -1, True, False, {}
         
         return self._get_obs(player_id), 0, False, False, {}
     
-    def render(self, mode="human"):
-        pass
+    def render(self, player_id, mode="ansi"):
+        """Render the current game state as text."""
+        if mode != "ansi":
+            raise NotImplementedError(f"Render mode {mode} is not supported.")
+            
+        output = []
+        
+        # Game state header
+        output.append(f"Phase: {self.phase}")
+        output.append(f"Attacking player: {'Player 1' if self.attacking_player == self.player_1 else 'Player 2'}")
+        output.append(f"Trump: {str(self.trump)}")
+        output.append(f"Deck remaining: {len(self.deck)} cards")
+        output.append(f"Discard pile: {len(self.discarded)} cards")
+        
+        # Table cards
+        output.append("\n==== TABLE ====")
+        if not self.table:
+            output.append("Empty")
+        else:
+            for i, card_pair in enumerate(self.table):
+                if len(card_pair) == 1:
+                    output.append(f"{i+1}. {str(card_pair[0])}")
+                else:
+                    output.append(f"{i+1}. {str(card_pair[0])}/"
+                                f"{str(card_pair[1])}")
+        
+        output.append("\n==== PLAYER HAND ====")
+        player = self.id_to_player[player_id]
+        if not player.hand:
+            output.append("Empty")
+        else:
+            cards = [f"\n{i+self.play_action_offset}: {str(card)}" for i, card in enumerate(player.hand)]
+            output.append("".join(cards))
+        
+        result = "\n".join(output)
+        print(result)
+        return result
 
     def take(self, player_id: int):
         player = self.id_to_player[player_id]
@@ -229,7 +291,7 @@ class CardDurakEnv(gym.Env):
         self.end_turn(Action.TAKE, player_id)
 
     def discard(self, player_id: int):
-        self.discard.extend(self.flatten_table(self.table))
+        self.discarded.extend(self.flatten_table(self.table))
         self.end_turn(Action.DISCARD, player_id)
 
     def play_card(self, player_id: int, card_index: int):
