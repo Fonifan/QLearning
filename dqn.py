@@ -8,10 +8,10 @@ from collections import deque
 import minigrid
 import matplotlib.pyplot as plt
 
-MAX_STEPS = 50_000
+MAX_STEPS = 1000
 NUM_ACTIONS = 6
 NUM_DIRECTIONS = 4
-ENVIRONMENT_ID = "MiniGrid-DoorKey-16x16-v0"
+ENVIRONMENT_ID = "MiniGrid-Empty-16x16-v0"
 class DQN(nn.Module):
     def __init__(self, output_dim):
         super(DQN, self).__init__()
