@@ -1,56 +1,31 @@
 import random
 from time import sleep
 import torch
-from cards_dqn import DQN, select_action, state_to_tensor
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from versions.attention_complex.dqn_complex_attention import DQNComplexAttn as DQN
 from card_env import CardDurakEnv, Action
+from cards_dqn import select_action
 
 MAX_HAND_SIZE = 20
 MAX_TABLE_PAIRS = 6
 input_dim = MAX_HAND_SIZE + MAX_TABLE_PAIRS * 2 + 3
-
-def print_action_mapping():
-    mapping = {
-        Action.TAKE: "TAKE",
-        Action.DISCARD: "DISCARD",
-        Action.PLAY_1: "PLAY_1",
-        Action.PLAY_2: "PLAY_2",
-        Action.PLAY_3: "PLAY_3",
-        Action.PLAY_4: "PLAY_4",
-        Action.PLAY_5: "PLAY_5",
-        Action.PLAY_6: "PLAY_6",
-        Action.PLAY_7: "PLAY_7",
-        Action.PLAY_8: "PLAY_8",
-        Action.PLAY_9: "PLAY_9",
-        Action.PLAY_10: "PLAY_10",
-        Action.PLAY_11: "PLAY_11",
-        Action.PLAY_12: "PLAY_12",
-        Action.PLAY_13: "PLAY_13",
-        Action.PLAY_14: "PLAY_14",
-        Action.PLAY_15: "PLAY_15",
-        Action.PLAY_16: "PLAY_16",
-        Action.PLAY_17: "PLAY_17",
-        Action.PLAY_18: "PLAY_18",
-        Action.PLAY_19: "PLAY_19",
-        Action.PLAY_20: "PLAY_20"
-    }
-    print("Action mapping:")
-    for key in sorted(mapping.keys()):
-        print(f"{key}: {mapping[key]}")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
     output_dim = 22  # env.action_space.n from card_env
-    policy_net = DQN(input_dim, output_dim)
+    policy_net = DQN(input_dim, output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("latest.card.dqn.pt", map_location=torch.device("cpu")))
+        policy_net.load_state_dict(torch.load("versions/attention_complex/best.pt", map_location=device))
         policy_net.eval()
-        print("Trained model loaded successfully.")
+        print(f"Trained model loaded successfully on {device}.")
     except Exception as e:
         print("Error loading model:", e)
         return
 
     env = CardDurakEnv()
 
-    print_action_mapping()
     print("You are Player 1. Enter the corresponding number for your desired action when prompted.")
     agent_wins = 0
     agent_losses = 0
@@ -96,5 +71,6 @@ def main():
     print(f"Agent wins: {agent_wins}")
     print(f"Agent losses: {agent_losses}")
     print(f"Win rate: {agent_wins / total_games:.2%}")
+
 if __name__ == "__main__":
     main()

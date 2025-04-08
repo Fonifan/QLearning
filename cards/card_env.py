@@ -47,7 +47,7 @@ class Card:
         self.rank = rank
         self.suit = suit
 
-    def __repr__(self):
+    def __repr__(self): # TODO null card
         return f"{self.rank}{self.pretty_suit[self.suit]}"
 
     def __str__(self):
@@ -61,6 +61,13 @@ class Card:
     
     def to_int(self):
         return Card.rank_to_int[self.rank] * len(Card.suits) + Card.suit_to_int[self.suit] + 1  # +1 to avoid NULL_CARD being 0
+    
+    def int_to_card(card_int: int):
+        if card_int == Card.NULL_CARD:
+            return Card("NULL", "NULL")
+        rank = Card.ranks[(card_int - 1) // len(Card.suits)]
+        suit = Card.suits[(card_int - 1) % len(Card.suits)]
+        return Card(rank, suit)
 
 class Player:
     def __init__(self, name: str):
