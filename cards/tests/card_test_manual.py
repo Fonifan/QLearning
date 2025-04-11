@@ -4,20 +4,18 @@ import torch
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from versions.attention_complex.dqn_complex_attention import DQNComplexAttn as DQN
+from versions.mlps.dqn_mlps import DQNMLPs as DQN
 from card_env import CardDurakEnv, Action
-from cards_dqn import select_action
+from cards_dqn import select_action_with_qs
+import numpy as np
 
-MAX_HAND_SIZE = 20
-MAX_TABLE_PAIRS = 6
-input_dim = MAX_HAND_SIZE + MAX_TABLE_PAIRS * 2 + 3
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
     output_dim = 22  # env.action_space.n from card_env
-    policy_net = DQN(input_dim, output_dim).to(device)
+    policy_net = DQN(output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("versions/attention_complex/best.pt", map_location=device))
+        policy_net.load_state_dict(torch.load("versions/mlps/card.dqn.pt", map_location=device))
         policy_net.eval()
         print(f"Trained model loaded successfully on {device}.")
     except Exception as e:
@@ -57,8 +55,16 @@ def main():
             print("\n--- Opponent's Turn ---")
             env.render(2)
             valid_actions_opponent = env._get_valid_actions(player_id=2)
-            opponent_action = select_action(state, valid_actions_opponent, epsilon=0, policy_net=policy_net)
-            print("Opponent's valid actions:", valid_actions_opponent)
+            sorted_valid_actions = sorted(valid_actions_opponent)
+            opponent_action, qs = select_action_with_qs(state, valid_actions_opponent, epsilon=0, policy_net=policy_net)
+            qs_array = qs.squeeze(0).detach().cpu().numpy()
+            filtered_qs = [q for q in qs_array if not np.isclose(q, -1e9)]
+            actions_with_qs = [(action, q) for action, q in zip(sorted_valid_actions, filtered_qs)]
+            
+            print()
+            for action, q in actions_with_qs:
+                print(f"{action}: {q.astype(str)}")
+
             print("Opponent selects action:", opponent_action)
             state, opp_reward, done, _, _ = env.step(opponent_action, player_id=2)
             if done:

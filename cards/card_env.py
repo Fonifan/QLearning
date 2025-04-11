@@ -47,7 +47,10 @@ class Card:
         self.rank = rank
         self.suit = suit
 
-    def __repr__(self): # TODO null card
+    def __repr__(self):
+        if self.rank == "NULL" or self.suit == "NULL":
+            return "NULL"
+    
         return f"{self.rank}{self.pretty_suit[self.suit]}"
 
     def __str__(self):
@@ -158,10 +161,9 @@ class CardDurakEnv(gym.Env):
     def _get_obs(self, player_id: int = 1):
         player = self.id_to_player[player_id]
         
-        # Transform hand to list of integers, padded to length self.MAX_PLAYABLE_CARD
         hand_transformed = self._transform_card_list(player.hand)
         hand_padded = hand_transformed + [Card.NULL_CARD] * (self.MAX_PLAYABLE_CARD - len(hand_transformed))
-        hand_padded = hand_padded[:self.MAX_PLAYABLE_CARD]  # Truncate if longer than self.MAX_PLAYABLE_CARD TODO check for info loss
+        hand_padded = hand_padded[:self.MAX_PLAYABLE_CARD] 
 
 
         table_transformed = self._transform_table(self.table)
@@ -169,15 +171,14 @@ class CardDurakEnv(gym.Env):
         for i in range(6):
             if i < len(table_transformed):
                 row = table_transformed[i] + [Card.NULL_CARD] * (2 - len(table_transformed[i]))
-                row = row[:2]  # Truncate if longer than 2
+                row = row[:2] 
             else:
                 row = [Card.NULL_CARD, Card.NULL_CARD]
             table_padded.append(row)
         
-        # Transform discard to list of integers, padded to max_cards
         discard_transformed = self._transform_card_list(self.discarded)
         discard_padded = discard_transformed + [Card.NULL_CARD] * (self.num_cards - len(discard_transformed))
-        discard_padded = discard_padded[:self.num_cards]  # Truncate if longer
+        discard_padded = discard_padded[:self.num_cards] 
         
         return {
             "hand": np.array(hand_padded, dtype=np.int32),
@@ -249,10 +250,11 @@ class CardDurakEnv(gym.Env):
             self.play_card(player_id, action - self.play_action_offset)
             is_finished = False
 
+        other_player_id = 2 if player_id == 1 else 1
         if is_finished != False:
-            return self._get_obs(player_id), 1 if is_finished == player_id else -1, True, False, {}
+            return self._get_obs(other_player_id), 1 if is_finished == player_id else -1, True, False, {}
         
-        return self._get_obs(player_id), 0, False, False, {}
+        return self._get_obs(other_player_id), 0, False, False, {}
     
     def render(self, player_id, mode="ansi"):
         """Render the current game state as text."""

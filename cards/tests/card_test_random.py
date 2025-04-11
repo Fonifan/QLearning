@@ -1,19 +1,17 @@
 import random
 from time import sleep
 import torch
-from cards_dqn import DQN, select_action
+from versions.mlps.dqn_mlps import DQNMLPs as DQN
+from cards_dqn import select_action
 from card_env import CardDurakEnv, Action
 
-MAX_HAND_SIZE = 20
-MAX_TABLE_PAIRS = 6
-input_dim = MAX_HAND_SIZE + MAX_TABLE_PAIRS * 2 + 3
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def test(episode):
     output_dim = 22
-    policy_net = DQN(input_dim, output_dim).to(device)
+    policy_net = DQN(output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("latest.card.dqn.pt", map_location=device))
+        policy_net.load_state_dict(torch.load("versions/mlps/card.dqn.pt", map_location=device))
         policy_net.eval()
     except Exception as e:
         print("Error loading model:", e)

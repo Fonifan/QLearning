@@ -1,29 +1,18 @@
-import csv
-import os
-import gymnasium as gym
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-import random
-import numpy as np
-from collections import deque
-import matplotlib.pyplot as plt
-from card_env import CardDurakEnv, Action
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-MAX_STEPS = 1000
 MAX_HAND_SIZE = 20
 MAX_TABLE_PAIRS = 6
+MAX_DISCARDS = 36
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-class DQNComplexAttn(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(DQNComplexAttn, self).__init__()
+class DQNAttnDiscard(nn.Module):
+    def __init__(self, output_dim):
+        super(DQNAttnDiscard, self).__init__()
         self.hand_size = MAX_HAND_SIZE
         self.table_size = MAX_TABLE_PAIRS * 2 
-        self.num_state_size = 2  
+        self.num_state_size = 2
         
         self.card_embedding = nn.Embedding(37, 16, padding_idx=0)
         
@@ -44,25 +33,36 @@ class DQNComplexAttn(nn.Module):
             nn.ReLU()
         )
         
-        self.combine = nn.Linear(64 + 64 + 16 + 16, 128)
+        self.discard_fc = nn.Sequential(
+            nn.Linear(16, 16),
+            nn.ReLU()
+        )
+        
+        self.combine = nn.Linear(64 + 64 + 16 + 16 + 16, 128)
         self.hidden = nn.Linear(128, 64)
         self.out = nn.Linear(64, output_dim)
         
     def forward(self, x):
-        hand = x[:, :self.hand_size].long()  # [batch, hand_size]
+
+        pos = 0
+        hand = x[:, pos:pos+self.hand_size].long()
+        pos += self.hand_size
         
-        pos = self.hand_size
-        table = x[:, pos:pos+self.table_size].long()  # [batch, table_size]
+        table = x[:, pos:pos+self.table_size].long()
         pos += self.table_size
         
-        numeric_state = x[:, pos:pos+2].float()  # [batch, 2]
+        numeric_state = x[:, pos:pos+2].float()
         pos += 2
         
-        trump_int = x[:, pos].long()  # [batch]
+        trump_int = x[:, pos].long()  # shape: [batch]
+        pos += 1
+        
+        discards = x[:, pos:pos+MAX_DISCARDS].long()  # [batch, MAX_DISCARDS]
         
         hand_emb = self.card_embedding(hand)   # [batch, hand_size, 16]
         table_emb = self.card_embedding(table)   # [batch, table_size, 16]
         trump_emb = self.card_embedding(trump_int) # [batch, 16]
+        discard_emb = self.card_embedding(discards)  # [batch, MAX_DISCARDS, 16]
         
         trump_expanded = trump_emb.unsqueeze(1)  # [batch, 1, 16]
         
@@ -78,23 +78,26 @@ class DQNComplexAttn(nn.Module):
         
         hand_features = torch.cat([hand_att, hand_to_table], dim=2)  # [batch, hand_size, 32]
         hand_features = hand_features.flatten(start_dim=1)           # [batch, hand_size*32]
-        
         table_features = table_att.flatten(start_dim=1)              # [batch, table_size*16]
         
         num_state_out = F.relu(self.num_state_fc(numeric_state))
-        
         trump_out = F.relu(self.trump_fc(trump_emb))
         
-        combined = torch.cat([F.relu(self.hand_fc(hand_features)),
-                            F.relu(self.table_fc(table_features)),
-                            num_state_out,
-                            trump_out], dim=1)
+        discard_summary = torch.mean(discard_emb, dim=1)  # [batch, 16]
+        discard_out = F.relu(self.discard_fc(discard_summary))
+        
+        combined = torch.cat([
+            F.relu(self.hand_fc(hand_features)),
+            F.relu(self.table_fc(table_features)),
+            num_state_out,
+            trump_out,
+            discard_out
+        ], dim=1)
         
         x = F.relu(self.combine(combined))
         x = F.relu(self.hidden(x))
         x = self.out(x)
         return x
-
 
 def state_to_tensor(state):
     normalized_deck_size = state["deck_size"] / 36.0 # TODO magic number
@@ -105,8 +108,9 @@ def state_to_tensor(state):
     
     numeric_state = torch.FloatTensor([normalized_deck_size, attacking])
     trump_tensor = torch.IntTensor([int(state["trump"])])
+    discards = torch.IntTensor(state['discard'])
     
-    return torch.cat([hand, table, numeric_state, trump_tensor])
+    return torch.cat([hand, table, numeric_state, trump_tensor, discards])
 
 def states_to_tensor(states):
     tensors = []

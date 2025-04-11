@@ -1,0 +1,6 @@
+if episode < 0:
+    return random.choice(valid_actions)
+elif episode < 500:
+    return select_action(state, valid_actions, epsilon=0, policy_net=opponent_policy)
+elif episode < 1000:
+    return select_action(state, valid_actions, epsilon=0, policy_net=policy_mlps)

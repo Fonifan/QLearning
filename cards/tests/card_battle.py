@@ -4,31 +4,26 @@ import torch
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from versions.attention_simple.dqn_simple_attention import DQNSimpleAttn as DQN
-from versions.attention_complex.dqn_complex_attention import DQNComplexAttn  as DQNComplex
 from card_env import CardDurakEnv, Action
 from cards_dqn import select_action
+from versions.mlps.dqn_mlps import DQNMLPs as DQN
 
-MAX_HAND_SIZE = 20
-MAX_TABLE_PAIRS = 6
-input_dim = MAX_HAND_SIZE + MAX_TABLE_PAIRS * 2 + 3
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
-    output_dim = 22  # env.action_space.n from card_env
-
-    policy_net1 = DQNComplex(input_dim, output_dim).to(device)
+    output_dim = 22 
+    policy_net1 = DQN(output_dim).to(device)
     try:
-        policy_net1.load_state_dict(torch.load("versions/attention_complex/best.pt", map_location=device))
+        policy_net1.load_state_dict(torch.load("versions/mlps_stages/ex1/best.pt", map_location=device))
         policy_net1.eval()
         print(f"Player 1 (Complex Attention) model loaded successfully on {device}.")
     except Exception as e:
         print("Error loading Player 1 model:", e)
         return
 
-    policy_net2 = DQN(input_dim, output_dim).to(device)
+    policy_net2 = DQN(output_dim).to(device)
     try:
-        policy_net2.load_state_dict(torch.load("versions/attention_simple/best.pt", map_location=device))
+        policy_net2.load_state_dict(torch.load("versions/mlps_stages/ex2/best.pt", map_location=device))
         policy_net2.eval()
         print(f"Player 2 (Simple Attention) model loaded successfully on {device}.")
     except Exception as e:
@@ -39,7 +34,7 @@ def main():
 
     wins_player1 = 0
     wins_player2 = 0
-    total_games = 200
+    total_games = 500
 
     for i in range(total_games):
         state = env.reset()
@@ -74,8 +69,8 @@ def main():
                 current_player = 1
 
     print(f"\nFinal Results: {total_games} games played.")
-    print(f"Player 1 (Complex Attention) wins: {wins_player1}")
-    print(f"Player 2 (Simple Attention) wins: {wins_player2}")
+    print(f"Player 1 (MLPS) wins: {wins_player1}")
+    print(f"Player 2 (MLPS with stages) wins: {wins_player2}")
     print(f"Win rates - Player 1: {wins_player1/total_games:.2%}, Player 2: {wins_player2/total_games:.2%}")
 
 if __name__ == "__main__":
