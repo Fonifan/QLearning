@@ -15,7 +15,7 @@ def main():
     output_dim = 22  # env.action_space.n from card_env
     policy_net = DQN(output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("versions/mlps/card.dqn.pt", map_location=device))
+        policy_net.load_state_dict(torch.load("versions/mlps/best.pt", map_location=device))
         policy_net.eval()
         print(f"Trained model loaded successfully on {device}.")
     except Exception as e:

@@ -49,6 +49,8 @@ def plot_winrates(csv_file="card_winrate.csv"):
         return False
 
     df = pd.read_csv(csv_file)
+    df = df.sort_values(by="Episode")
+    df['cumulative_mean'] = df['Win Rate'].expanding().mean().reset_index(drop=True)
 
     sns.set_theme(style="darkgrid")
     plt.figure(figsize=(10, 6))
@@ -57,11 +59,20 @@ def plot_winrates(csv_file="card_winrate.csv"):
         x="Episode",
         y="Win Rate",
         data=df,
-        marker='o'
+        marker='o',
+        label="Win Rate"
+    )
+    
+    sns.lineplot(
+        x="Episode",
+        y="cumulative_mean",
+        data=df,
+        linestyle='--',
+        label="Cumulative Mean"
     )
     
     plt.ylabel('Win Rate')
-    plt.xlabel('Opponent')
+    plt.xlabel('Episode')
     plt.title('Q-Learning Agent Win Rates in Training')
     
     plt.tight_layout()
