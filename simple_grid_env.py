@@ -99,10 +99,11 @@ class SimpleGrid(gym.Env):
     def calculate_reward(self, old_pos):
         if self.agent_pos == self.target_pos:
             return 1 - 0.9 * (self.steps / self.max_steps)
-        else:
-            pos_diff = self.calculate_intermediate_reward(self.agent_pos) - self.calculate_intermediate_reward(old_pos)
-            steps_penalty = (np.sign(pos_diff) if pos_diff != 0 else 1) * ((self.steps /  self.max_steps) / self.max_steps)
-            return pos_diff - steps_penalty
+        return 0
+        # else:
+        #     pos_diff = self.calculate_intermediate_reward(self.agent_pos) - self.calculate_intermediate_reward(old_pos)
+        #     steps_penalty = (np.sign(pos_diff) if pos_diff != 0 else 1) * ((self.steps /  self.max_steps) / self.max_steps)
+        #     return pos_diff - steps_penalty
         
     def calculate_intermediate_reward(self, pos):
         return (self.max_distance - self.calculate_distance(pos, self.target_pos) )/ self.max_distance

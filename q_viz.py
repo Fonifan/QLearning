@@ -8,7 +8,7 @@ import numpy as np
 from make_heatmap_video import create_vid
 from simple_grid_env import SimpleGrid
 
-MAX_STEPS = 100
+MAX_STEPS = 2700
 MAX_EPISODES = 700
 historic_Qs = []
 def get_state(observation):
