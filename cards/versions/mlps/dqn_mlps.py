@@ -28,38 +28,24 @@ class DQNMLPs(nn.Module):
         self.hidden = nn.Linear(128, 64)
         self.out = nn.Linear(64, output_dim)
         
-    def forward(self, x):
-        pos = 0
-        hand = x[:, pos:pos+MAX_HAND_SIZE].long()
-        pos += MAX_HAND_SIZE
-        
-        table = x[:, pos:pos+MAX_TABLE_SIZE].long()
-        pos += MAX_TABLE_SIZE
-        
-        numeric_state = x[:, pos:pos+2].float()
-        pos += 2
-        
-        trump_int = x[:, pos].long()  # shape: [batch]
-        pos += 1
-        
-        discards = x[:, pos:pos+MAX_DISCARDS].long()  # [batch, MAX_DISCARDS]
-        
+    def forward(self, hand, table, trump, deck_size, is_attack, discards):
         hand_emb = self.card_embedding(hand)   # [batch, hand_size, 16]
         table_emb = self.card_embedding(table)   # [batch, table_size, 16]
-        trump_emb = self.card_embedding(trump_int) # [batch, 16]
+        trump_emb = self.card_embedding(trump) # [batch, 16]
         discard_emb = self.card_embedding(discards)  # [batch, MAX_DISCARDS, 16]
 
         hand_emb_flat = hand_emb.view(hand_emb.size(0), -1)    # [batch, 16 * MAX_HAND_SIZE]
         table_emb_flat = table_emb.view(table_emb.size(0), -1) # [batch, 16 * MAX_TABLE_SIZE]
         discard_emb_flat = discard_emb.view(discard_emb.size(0), -1)  # [batch, 16 * MAX_DISCARDS]
+        trump_emb_flat = trump_emb.view(trump_emb.size(0), -1)
 
         hand_out = F.relu(self.fc_hand1(hand_emb_flat))
-        hand_out = F.relu(self.fc_hand2(torch.cat([hand_out, trump_emb], dim=1)))
+        hand_out = F.relu(self.fc_hand2(torch.cat([hand_out, trump_emb_flat], dim=1)))
 
         table_out = F.relu(self.fc_table1(table_emb_flat))
-        table_out = F.relu(self.fc_table2(torch.cat([table_out, trump_emb], dim=1)))
+        table_out = F.relu(self.fc_table2(torch.cat([table_out, trump_emb_flat], dim=1)))
 
-        state_out = F.relu(self.fc_state(numeric_state))
+        state_out = F.relu(self.fc_state(torch.cat([deck_size, is_attack], dim=1)))
 
         discard_out = F.relu(self.fc_discard(discard_emb_flat))
     
@@ -72,20 +58,26 @@ class DQNMLPs(nn.Module):
         return x
 
 def states_to_tensor(states):
-    tensors = []
-    for state in states:
-        tensors.append(state_to_tensor(state).to(device))
-    return torch.stack(tensors)
+    tensors = [state_to_tensor(s) for s in states]
+    batch = {}
+    for key in tensors[0]:
+        batch[key] = torch.stack([t[key] for t in tensors])
+    return batch
 
 def state_to_tensor(state):
-    normalized_deck_size = state["deck_size"] / 36.0 # TODO magic number
-    attacking = float(state["attacking"])
-    
-    hand = torch.IntTensor(state['hand'])
-    table = torch.IntTensor(state['table'].flatten())
-    
-    numeric_state = torch.FloatTensor([normalized_deck_size, attacking])
-    trump_tensor = torch.IntTensor([int(state["trump"])])
-    discards = torch.IntTensor(state['discard'])
-    
-    return torch.cat([hand, table, numeric_state, trump_tensor, discards])
+    hand = torch.tensor(state['hand'], dtype=torch.long)
+    table = torch.tensor(state['table'].flatten() if hasattr(state['table'], 'flatten') else state['table'],
+                         dtype=torch.long)
+    deck_size = torch.tensor([state['deck_size'] / 36.0], dtype=torch.float)
+    is_attack = torch.tensor([state['attacking']], dtype=torch.float)
+    trump = torch.tensor([int(state['trump'])], dtype=torch.long)
+    discards = torch.tensor(state['discard'], dtype=torch.long)
+
+    return {
+        'hand': hand,
+        'table': table,
+        'deck_size': deck_size,
+        'is_attack': is_attack,
+        'trump': trump,
+        'discards': discards
+    }

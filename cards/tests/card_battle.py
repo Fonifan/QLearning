@@ -7,23 +7,25 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from card_env import CardDurakEnv, Action
 from cards_dqn import select_action
 from versions.mlps.dqn_mlps import DQNMLPs as DQN
-
+from versions.mlps.dqn_mlps import state_to_tensor as mlp_state_to_tensor
+from versions.dron.dron import DRON as DRON
+from versions.dron.dron import state_to_tensor as dron_state_to_tensor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
     output_dim = 22 
     policy_net1 = DQN(output_dim).to(device)
     try:
-        policy_net1.load_state_dict(torch.load("versions/mlps_stages/ex1/best.pt", map_location=device))
+        policy_net1.load_state_dict(torch.load("versions/mlps/best.pt", map_location=device))
         policy_net1.eval()
         print(f"Player 1 (Complex Attention) model loaded successfully on {device}.")
     except Exception as e:
         print("Error loading Player 1 model:", e)
         return
 
-    policy_net2 = DQN(output_dim).to(device)
+    policy_net2 = DRON(output_dim).to(device)
     try:
-        policy_net2.load_state_dict(torch.load("versions/mlps_stages/ex2/best.pt", map_location=device))
+        policy_net2.load_state_dict(torch.load("versions/dron/best.card.dqn.pt", map_location=device))
         policy_net2.eval()
         print(f"Player 2 (Simple Attention) model loaded successfully on {device}.")
     except Exception as e:
@@ -43,7 +45,7 @@ def main():
         while not done:
             if current_player == 1:
                 valid_actions = env._get_valid_actions(player_id=1)
-                action = select_action(state, valid_actions, epsilon=0, policy_net=policy_net1)
+                action = select_action(state, valid_actions, epsilon=0, policy_net=policy_net1, state_to_tensor_transformer=mlp_state_to_tensor)
                 state, reward, done, _, _ = env.step(action, player_id=1)
                 if done:
                     if reward > 0:
@@ -56,7 +58,7 @@ def main():
                 current_player = 2
             else:
                 valid_actions = env._get_valid_actions(player_id=2)
-                action = select_action(state, valid_actions, epsilon=0, policy_net=policy_net2)
+                action = select_action(state, valid_actions, epsilon=0, policy_net=policy_net2, state_to_tensor_transformer=dron_state_to_tensor)
                 state, reward, done, _, _ = env.step(action, player_id=2)
                 if done:
                     if reward > 0:

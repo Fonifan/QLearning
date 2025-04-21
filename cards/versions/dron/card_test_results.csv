@@ -1,0 +1,15 @@
+Episode,Opponent,Total Games,Agent Wins,Agent Losses,Win Rate
+0,random,100,75,25,0.7500
+0,policy_mlps,100,37,63,0.3700
+23,random,100,70,30,0.7000
+23,policy_mlps,100,30,70,0.3000
+44,random,100,71,29,0.7100
+44,policy_mlps,100,29,71,0.2900
+67,random,100,75,25,0.7500
+67,policy_mlps,100,27,73,0.2700
+90,random,100,73,27,0.7300
+90,policy_mlps,100,36,64,0.3600
+118,random,100,80,20,0.8000
+118,policy_mlps,100,43,57,0.4300
+146,random,100,64,36,0.6400
+146,policy_mlps,100,27,73,0.2700

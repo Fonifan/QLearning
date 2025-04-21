@@ -1,17 +1,19 @@
 import csv
 import os
-import gymnasium as gym
+import random
+from collections import deque
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-import random
 import numpy as np
-from collections import deque
-import matplotlib.pyplot as plt
-from card_env import Card, CardDurakEnv, Action
-from versions.mlps.dqn_mlps import DQNMLPs as DQN, state_to_tensor, states_to_tensor
+
+from card_env import Card, CardDurakEnv
 from plot_test import plot_results, plot_winrates
+from versions.dron.dron import DRON as DQN, state_to_tensor, states_to_tensor
+# from versions.mlps.dqn_mlps import DQNMLPs as DQN, states_to_tensor, state_to_tensor
+from versions.mlps.dqn_mlps import state_to_tensor as mlp_state_to_tensor
+from versions.mlps.dqn_mlps import DQNMLPs as MLPS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -21,12 +23,13 @@ MAX_TABLE_PAIRS = 6
 SELF_PLAY_START_EPISODE = 700
 SELF_PLAY_END_EPISODE = 1700
 
-def select_action(state, valid_actions, epsilon, policy_net):
+def select_action(state, valid_actions, epsilon, policy_net, state_to_tensor_transformer=state_to_tensor):
     if random.random() < epsilon:
         return random.choice(valid_actions)
     
-    encoded = state_to_tensor(state).unsqueeze(0).to(device)
-    q_values = policy_net(encoded)
+    tensors = state_to_tensor_transformer(state)
+    batched = {k: v.unsqueeze(0).to(device) for k, v in tensors.items()}
+    q_values = policy_net(**batched)
     
     invalid_mask = torch.ones(q_values.size(), dtype=torch.bool)
     for action in valid_actions:
@@ -38,8 +41,9 @@ def select_action_with_qs(state, valid_actions, epsilon, policy_net):
     if random.random() < epsilon:
         return random.choice(valid_actions)
     
-    encoded = state_to_tensor(state).unsqueeze(0).to(device)
-    q_values = policy_net(encoded)
+    tensors = state_to_tensor(state)
+    batched = {k: v.unsqueeze(0).to(device) for k, v in tensors.items()}
+    q_values = policy_net(**batched)
     
     invalid_mask = torch.ones(q_values.size(), dtype=torch.bool)
     for action in valid_actions:
@@ -52,17 +56,17 @@ def optimize_model(memory, policy, target, optimizer, batch_size, gamma):
         batch = random.sample(memory, batch_size)
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
 
-        state_batch = states_to_tensor(state_batch)
-        action_batch = torch.LongTensor(action_batch).unsqueeze(1).to(device)
-        reward_batch = torch.FloatTensor(reward_batch).to(device)
-        next_state_batch = states_to_tensor(next_state_batch)
-        done_batch = torch.FloatTensor(done_batch).to(device)
+        batched_states = states_to_tensor(state_batch)
+        batched_next_states = states_to_tensor(next_state_batch)
 
-        q_values = policy(state_batch).gather(1, action_batch).squeeze()
+        batched_states = {k: v.to(device) for k, v in batched_states.items()}
+        batched_next_states = {k: v.to(device) for k, v in batched_next_states.items()}
+
+        q_values = policy(**batched_states).gather(1, torch.LongTensor(action_batch).unsqueeze(1).to(device)).squeeze()
 
         with torch.no_grad():
-            max_next_q_values = target(next_state_batch).max(1)[0]
-            target_q_values = reward_batch + gamma * max_next_q_values * (1 - done_batch)
+            max_next_q_values = target(**batched_next_states).max(1)[0]
+            target_q_values = torch.FloatTensor(reward_batch).to(device) + gamma * max_next_q_values * (1 - torch.FloatTensor(done_batch).to(device))
 
         loss = nn.MSELoss()(q_values, target_q_values)
 
@@ -77,11 +81,15 @@ def soft_update(source_net, target_net, tau=0.01):
     for target_param, source_param in zip(target_net.parameters(), source_net.parameters()):
         target_param.data.copy_(tau * source_param.data + (1.0 - tau) * target_param.data)
 
-def test(episode): #TODO seed env for test reproducibility
+def test(episode) -> dict: #TODO seed env for test reproducibility
     env = CardDurakEnv()
     action_selectors = {
         "random": lambda _, valid_actions: random.choice(valid_actions),
-        "policy_mlps": lambda state, valid_actions: select_action(state, valid_actions, epsilon=0, policy_net=policy_mlps)
+        "policy_mlps": lambda state, valid_actions: select_action(state, valid_actions, epsilon=0, policy_net=policy_mlps, state_to_tensor_transformer=mlp_state_to_tensor)
+    }
+    winrates = {
+        "random": 0,
+        "policy_mlps": 0
     }
     for selector in action_selectors:
         print(f"Testing with action type: {selector}")
@@ -111,12 +119,14 @@ def test(episode): #TODO seed env for test reproducibility
                     agent_losses += 1 if final_reward > 0 else 0
                     agent_wins += 1 if final_reward < 0 else 0
                     break
-        write_results_to_csv(episode, selector, total_games, agent_wins, agent_losses)
+        winrate = agent_wins / total_games
+        write_results_to_csv(episode, selector, total_games, agent_wins, agent_losses, winrate)
+        winrates[selector] = winrate
+    return winrates
 
-def write_results_to_csv(episode, opponent, total_games, agent_wins, agent_losses):
+def write_results_to_csv(episode, opponent, total_games, agent_wins, agent_losses, win_rate):
     csv_file = "card_test_results.csv"
-    win_rate = agent_wins / total_games if total_games > 0 else 0
-    
+
     file_exists = os.path.isfile(csv_file)
     
     with open(csv_file, mode='a', newline='') as file:
@@ -178,15 +188,15 @@ def write_winrate_to_csv(episode, wins, losses):
 if __name__ == "__main__":
     rewards_per_episode = []
     steps_done = 0
-    learning_rate = 0.001
-    gamma = 0.99
-    epsilon = 1
-    epsilon_min = 0.01
-    epsilon_decay = 0.995
+    learning_rate = 0.0005
+    gamma = 0.9
+    epsilon = 0.3
+    epsilon_min = 0.1
+    epsilon_decay = 0.0000004
     batch_size = 64
-    target_update_freq = 3000
+    target_update_freq = 1000
     memory_size = 10000
-    episodes = 2000
+    episodes = 150
 
     env = CardDurakEnv()
 
@@ -197,7 +207,7 @@ if __name__ == "__main__":
     print("Number of parameters in DQN:", sum(p.numel() for p in policy_net.parameters() if p.requires_grad))
     target_net = DQN(output_dim).to(device)
 
-    policy_mlps = DQN(output_dim).to(device)
+    policy_mlps = MLPS(output_dim).to(device)
     policy_mlps.load_state_dict(torch.load("versions/mlps/best.pt", map_location=device))
     policy_mlps.eval()
 
@@ -210,6 +220,7 @@ if __name__ == "__main__":
     opponent_memory = deque(maxlen=memory_size)
     wins = 0
     losses = 0
+    max_winrate = 0
     for episode in range(episodes):
         state = env.reset()
         done = False
@@ -225,7 +236,7 @@ if __name__ == "__main__":
             opponent_done = False
             if not done:
                 valid_actions = env._get_valid_actions(player_id=2)
-                opponent_action = get_opponent_action(episode, state, valid_actions, oponent_net=target_net)
+                opponent_action = get_opponent_action(episode, next_state, valid_actions, oponent_net=target_net)
                 opponent_next_state, opponent_reward, opponent_done, truncated, _ = env.step(opponent_action, player_id=2)
                 state = opponent_next_state
                 if opponent_done:
@@ -242,7 +253,7 @@ if __name__ == "__main__":
                     losses += 1
             
             p_loss = optimize_model(memory, policy_net, target_net, optimizer, batch_size, gamma)
-            
+
             if steps_done % target_update_freq == 0:
                 write_winrate_to_csv(episode, wins, losses)
                 wins = 0
@@ -250,12 +261,16 @@ if __name__ == "__main__":
                 print(f"Updating target networks at step {steps_done}")
                 target_net.load_state_dict(policy_net.state_dict())
                 torch.save(policy_net.state_dict(), "latest.card.dqn.pt")
-                test(episode)
+                winrates = test(episode)
+                avg_winrate = np.average(list(winrates.values()))
+                if avg_winrate > max_winrate:
+                    max_winrate = avg_winrate
+                    torch.save(policy_net.state_dict(), "best.card.dqn.pt")
+                    print(f"New best avg winrate: {max_winrate}. Winrates: {winrates}")
             
             steps_done += 1
             episode_steps += 1
-            
-        epsilon = max(epsilon_min, epsilon_decay * epsilon)
+            epsilon = max(epsilon_min, epsilon - epsilon_decay)
 
     torch.save(policy_net.state_dict(), "card.dqn.pt")
     plot_results()

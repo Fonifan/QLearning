@@ -158,7 +158,7 @@ class CardDurakEnv(gym.Env):
 
         return self._get_obs(1)
 
-    def _get_obs(self, player_id: int = 1):
+    def _get_obs(self, player_id: int):
         player = self.id_to_player[player_id]
         
         hand_transformed = self._transform_card_list(player.hand)
@@ -186,7 +186,7 @@ class CardDurakEnv(gym.Env):
             "table": np.array(table_padded, dtype=np.int32),
             "discard": np.array(discard_padded, dtype=np.int32),
             "trump": self.trump.to_int(),
-            "attacking": 1 if self.attacking_player == player else 0,  # Convert boolean to int
+            "attacking": 1 if self.attacking_player == player else 0,
         }
     
     def _transform_card_list(self, cards: list[Card]):
@@ -240,6 +240,7 @@ class CardDurakEnv(gym.Env):
         return len(self.table) <= max_table and len(self._get_defending_player().hand) > 0
 
     def step(self, action, player_id: int):
+        opponent_obs = self._get_opponent_obs(player_id, action)
         if action == Action.TAKE:
             self.take(player_id)
             is_finished = self.is_finished()
@@ -251,10 +252,21 @@ class CardDurakEnv(gym.Env):
             is_finished = False
 
         other_player_id = 2 if player_id == 1 else 1
+        obs = self._get_obs(other_player_id)
+        obs.update(opponent_obs)
         if is_finished != False:
-            return self._get_obs(other_player_id), 1 if is_finished == player_id else -1, True, False, {}
+            return obs, 1 if is_finished == player_id else -1, True, False, {}
         
-        return self._get_obs(other_player_id), 0, False, False, {}
+        return obs, 0, False, False, {}
+    
+    def _get_opponent_obs(self, player_id: int, action):
+        opponent_obs = self._get_obs(player_id)
+        opponent_obs["action"] = action
+        opponent_obs.pop("hand")
+        opponent_obs["hand_size"] = len(self.id_to_player[player_id].hand)
+
+        return{f"opp_{k}": v for k, v in opponent_obs.items()}
+
     
     def render(self, player_id, mode="ansi"):
         """Render the current game state as text."""

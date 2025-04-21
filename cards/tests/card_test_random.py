@@ -1,17 +1,23 @@
+import os
 import random
-from time import sleep
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 import torch
-from versions.mlps.dqn_mlps import DQNMLPs as DQN
+from versions.dron.dron import DRON as DQN
 from cards_dqn import select_action
 from card_env import CardDurakEnv, Action
-
+import os
+import numpy as np
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+np.random.seed(42)
 def test(episode):
     output_dim = 22
     policy_net = DQN(output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("versions/mlps/card.dqn.pt", map_location=device))
+        print(os.getcwd())
+        policy_net.load_state_dict(torch.load("versions/dron/best.card.dqn.pt", map_location=device))
         policy_net.eval()
     except Exception as e:
         print("Error loading model:", e)
@@ -21,9 +27,9 @@ def test(episode):
 
     agent_wins = 0
     agent_losses = 0
-    total_games = 200
+    total_games = 500
     for i in range(total_games):
-        state = env.reset()
+        state = env.reset(seed=42)
         done = False
         while not done:
             valid_actions = env._get_valid_actions(player_id=1)
@@ -49,8 +55,9 @@ def test(episode):
                 final_reward = -opp_reward
                 agent_losses += 1 if final_reward > 0 else 0
                 agent_wins += 1 if final_reward < 0 else 0
+                print("Finished game", i)
                 break
-    print(f"Episode {episode}: Agent wins: {agent_wins}, Agent losses: {agent_losses}")
+    print(f"Agent wins: {agent_wins}, Agent losses: {agent_losses}")
     print(f"Win rate: {agent_wins / total_games:.2%}")
 
 

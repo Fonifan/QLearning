@@ -4,7 +4,7 @@ import torch
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from versions.mlps.dqn_mlps import DQNMLPs as DQN
+from versions.dron.dron import DRON as DQN
 from card_env import CardDurakEnv, Action
 from cards_dqn import select_action_with_qs
 import numpy as np
@@ -15,7 +15,7 @@ def main():
     output_dim = 22  # env.action_space.n from card_env
     policy_net = DQN(output_dim).to(device)
     try:
-        policy_net.load_state_dict(torch.load("versions/mlps/best.pt", map_location=device))
+        policy_net.load_state_dict(torch.load("versions/dron/best.card.dqn.pt", map_location=device))
         policy_net.eval()
         print(f"Trained model loaded successfully on {device}.")
     except Exception as e:
