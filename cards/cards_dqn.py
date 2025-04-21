@@ -192,11 +192,11 @@ if __name__ == "__main__":
     gamma = 0.9
     epsilon = 0.3
     epsilon_min = 0.1
-    epsilon_decay = 0.0000004
+    epsilon_decay = 0.99
     batch_size = 64
     target_update_freq = 1000
     memory_size = 10000
-    episodes = 150
+    episodes = 1000
 
     env = CardDurakEnv()
 
@@ -217,7 +217,6 @@ if __name__ == "__main__":
     optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
 
     memory = deque(maxlen=memory_size)
-    opponent_memory = deque(maxlen=memory_size)
     wins = 0
     losses = 0
     max_winrate = 0
@@ -270,7 +269,7 @@ if __name__ == "__main__":
             
             steps_done += 1
             episode_steps += 1
-            epsilon = max(epsilon_min, epsilon - epsilon_decay)
+            epsilon = max(epsilon_min, epsilon_decay * epsilon)
 
     torch.save(policy_net.state_dict(), "card.dqn.pt")
     plot_results()

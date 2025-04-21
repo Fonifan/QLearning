@@ -6,9 +6,9 @@
 # Training
 * [X] Train in stages
     * Initial opponent = random agent, then switch to self-play with soft update or use pretrained best model
-* Use prioritzed replay buffer
+* Use prioritized replay buffer
 * [X] Use target network as an opponent - simplify the training process 
-* Play with hyperparameters
+* [X] Play with hyperparameters
     * Start with lower epsilon (0.35) and decay it slower over larger num of episodes
     * Adapt loss/learning rates to lower (see DRON paper)
 
